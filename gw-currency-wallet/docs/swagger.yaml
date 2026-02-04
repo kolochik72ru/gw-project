@@ -1,0 +1,324 @@
+basePath: /api/v1
+definitions:
+  handlers.DepositRequest:
+    properties:
+      amount:
+        type: number
+      currency:
+        enum:
+        - USD
+        - EUR
+        - RUB
+        type: string
+    required:
+    - amount
+    - currency
+    type: object
+  handlers.ExchangeRequest:
+    properties:
+      amount:
+        type: number
+      from_currency:
+        enum:
+        - USD
+        - EUR
+        - RUB
+        type: string
+      to_currency:
+        enum:
+        - USD
+        - EUR
+        - RUB
+        type: string
+    required:
+    - amount
+    - from_currency
+    - to_currency
+    type: object
+  handlers.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  handlers.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  handlers.WithdrawRequest:
+    properties:
+      amount:
+        type: number
+      currency:
+        enum:
+        - USD
+        - EUR
+        - RUB
+        type: string
+    required:
+    - amount
+    - currency
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description: API for currency wallet management with exchange capabilities
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Currency Wallet API
+  version: "1.0"
+paths:
+  /api/v1/balance:
+    get:
+      description: Get balance for all currencies
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get user balance
+      tags:
+      - wallet
+  /api/v1/exchange:
+    post:
+      consumes:
+      - application/json
+      description: Exchange one currency for another
+      parameters:
+      - description: Exchange data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ExchangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Exchange currency
+      tags:
+      - exchange
+  /api/v1/exchange/rates:
+    get:
+      description: Get current exchange rates for all currency pairs
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get exchange rates
+      tags:
+      - exchange
+  /api/v1/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and return JWT token
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login user
+      tags:
+      - auth
+  /api/v1/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user with username, email and password
+      parameters:
+      - description: Registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register a new user
+      tags:
+      - auth
+  /api/v1/wallet/deposit:
+    post:
+      consumes:
+      - application/json
+      description: Add funds to user account
+      parameters:
+      - description: Deposit data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.DepositRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Deposit funds
+      tags:
+      - wallet
+  /api/v1/wallet/withdraw:
+    post:
+      consumes:
+      - application/json
+      description: Withdraw funds from user account
+      parameters:
+      - description: Withdrawal data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.WithdrawRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Withdraw funds
+      tags:
+      - wallet
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

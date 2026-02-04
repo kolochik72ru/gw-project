@@ -1,0 +1,199 @@
+version: '3.8'
+
+services:
+  # PostgreSQL для exchanger
+  postgres-exchanger:
+    image: postgres:14-alpine
+    container_name: postgres-exchanger
+    environment:
+      POSTGRES_USER: exchanger_user
+      POSTGRES_PASSWORD: exchanger_password
+      POSTGRES_DB: exchanger_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_exchanger_data:/var/lib/postgresql/data
+    networks:
+      - microservices
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exchanger_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL для wallet
+  postgres-wallet:
+    image: postgres:14-alpine
+    container_name: postgres-wallet
+    environment:
+      POSTGRES_USER: wallet_user
+      POSTGRES_PASSWORD: wallet_password
+      POSTGRES_DB: wallet_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_wallet_data:/var/lib/postgresql/data
+    networks:
+      - microservices
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB для notification
+  mongodb:
+    image: mongo:7-jammy
+    container_name: mongodb-notification
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - microservices
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Zookeeper для Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - microservices
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - microservices
+    healthcheck:
+      test: kafka-broker-api-versions --bootstrap-server localhost:9092
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # gw-exchanger service
+  gw-exchanger:
+    build:
+      context: ./gw-exchanger
+      dockerfile: Dockerfile
+    container_name: gw-exchanger
+    depends_on:
+      postgres-exchanger:
+        condition: service_healthy
+    environment:
+      GRPC_PORT: 50051
+      LOG_LEVEL: info
+      DB_HOST: postgres-exchanger
+      DB_PORT: 5432
+      DB_USER: exchanger_user
+      DB_PASSWORD: exchanger_password
+      DB_NAME: exchanger_db
+      DB_SSLMODE: disable
+    ports:
+      - "50051:50051"
+    networks:
+      - microservices
+    restart: unless-stopped
+
+  # gw-currency-wallet service
+  gw-currency-wallet:
+    build:
+      context: ./gw-currency-wallet
+      dockerfile: Dockerfile
+    container_name: gw-currency-wallet
+    depends_on:
+      postgres-wallet:
+        condition: service_healthy
+      gw-exchanger:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    environment:
+      HTTP_PORT: 8080
+      GIN_MODE: release
+      LOG_LEVEL: info
+      DB_HOST: postgres-wallet
+      DB_PORT: 5432
+      DB_USER: wallet_user
+      DB_PASSWORD: wallet_password
+      DB_NAME: wallet_db
+      DB_SSLMODE: disable
+      JWT_SECRET: super-secret-jwt-key-change-in-production
+      JWT_EXPIRATION: 24h
+      EXCHANGER_GRPC_HOST: gw-exchanger
+      EXCHANGER_GRPC_PORT: 50051
+      EXCHANGER_GRPC_TIMEOUT: 5s
+      CACHE_RATES_TTL: 5m
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: large-transfers
+      KAFKA_TRANSFER_THRESHOLD: 30000
+    ports:
+      - "8080:8080"
+    networks:
+      - microservices
+    restart: unless-stopped
+
+  # gw-notification service
+  gw-notification:
+    build:
+      context: ./gw-notification
+      dockerfile: Dockerfile
+    container_name: gw-notification
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: gw-notification
+      LOG_LEVEL: info
+      MONGO_URI: mongodb://mongodb:27017
+      MONGO_DATABASE: notification_db
+      MONGO_COLLECTION: large_transfers
+      MONGO_TIMEOUT: 10s
+      MONGO_MAX_POOL_SIZE: 100
+      MONGO_MIN_POOL_SIZE: 10
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: large-transfers
+      KAFKA_GROUP_ID: notification-service-group
+      KAFKA_PARTITION: 0
+      BATCH_SIZE: 100
+      WORKERS: 10
+      FLUSH_INTERVAL: 5s
+      MAX_PROCESSING_TIME: 30s
+      RETRY_ATTEMPTS: 3
+      RETRY_DELAY: 1s
+    networks:
+      - microservices
+    restart: unless-stopped
+
+networks:
+  microservices:
+    driver: bridge
+
+volumes:
+  postgres_exchanger_data:
+  postgres_wallet_data:
+  mongodb_data:
